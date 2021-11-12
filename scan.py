@@ -288,7 +288,7 @@ class DocScanner(object):
         return screenCnt.reshape(4, 2)
 
     def interactive_get_contour(self, screenCnt, rescaled_image):
-        poly = Polygon(screenCnt, animated=True, fill=False, color="yellow", linewidth=5)
+        poly = Polygon(screenCnt, animated=True, fill=False, color="yellow", linewidth=3, alpha=0.5)
         fig, ax = plt.subplots()
         fig.set_size_inches(10, 7)
         ax.add_patch(poly)

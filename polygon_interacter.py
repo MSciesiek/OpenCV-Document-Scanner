@@ -9,7 +9,7 @@ class PolygonInteractor(object):
     """
 
     showverts = True
-    epsilon = 5  # max pixel distance to count as a vertex hit
+    epsilon = 15  # max pixel distance to count as a vertex hit
 
     def __init__(self, ax, poly):
         if poly.figure is None:
@@ -19,7 +19,8 @@ class PolygonInteractor(object):
         self.poly = poly
 
         x, y = zip(*self.poly.xy)
-        self.line = Line2D(x, y, marker='o', markerfacecolor='r', animated=True, markersize=10)
+        self.line = Line2D(x, y, marker='o', markerfacecolor='r', animated=True, markersize=10,
+                           ls='--', alpha=0.5)
         self.ax.add_line(self.line)
 
         cid = self.poly.add_callback(self.poly_changed)
