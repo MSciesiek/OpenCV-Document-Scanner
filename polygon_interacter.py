@@ -19,7 +19,7 @@ class PolygonInteractor(object):
         self.poly = poly
 
         x, y = zip(*self.poly.xy)
-        self.line = Line2D(x, y, marker='o', markerfacecolor='r', animated=True)
+        self.line = Line2D(x, y, marker='o', markerfacecolor='r', animated=True, markersize=10)
         self.ax.add_line(self.line)
 
         cid = self.poly.add_callback(self.poly_changed)

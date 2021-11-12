@@ -22,10 +22,39 @@ from pylsd.lsd import lsd
 import argparse
 import os
 
+
+def zoom_factory(ax, base_scale=2.0):
+    def zoom_fun(event):
+        cur_xlim = ax.get_xlim()
+        cur_ylim = ax.get_ylim()
+        cur_xrange = (cur_xlim[1] - cur_xlim[0]) * 0.5
+        cur_yrange = (cur_ylim[1] - cur_ylim[0]) * 0.5
+        xdata = event.xdata
+        ydata = event.ydata
+        if event.button == 'up':
+            scale_factor = 1/base_scale
+        elif event.button == 'down':
+            scale_factor = base_scale
+        else:
+            scale_factor = 1
+            print(event.button)
+
+        ax.set_xlim([xdata - cur_xrange*scale_factor,
+                     xdata + cur_xrange*scale_factor])
+        ax.set_ylim([ydata - cur_yrange * scale_factor,
+                     ydata + cur_yrange * scale_factor])
+        plt.draw()
+
+    fig = ax.get_figure()
+    fig.canvas.mpl_connect('scroll_event', zoom_fun)
+
+    return zoom_fun
+
+
 class DocScanner(object):
     """An image scanner"""
 
-    def __init__(self, interactive=False, MIN_QUAD_AREA_RATIO=0.25, MAX_QUAD_ANGLE_RANGE=40):
+    def __init__(self, interactive=False, MIN_QUAD_AREA_RATIO=0.05, MAX_QUAD_ANGLE_RANGE=40):
         """
         Args:
             interactive (boolean): If True, user can adjust screen contour before
@@ -35,13 +64,14 @@ class DocScanner(object):
                 of the original image. Defaults to 0.25.
             MAX_QUAD_ANGLE_RANGE (int):  A contour will also be rejected if the range 
                 of its interior angles exceeds MAX_QUAD_ANGLE_RANGE. Defaults to 40.
-        """        
+        """
         self.interactive = interactive
         self.MIN_QUAD_AREA_RATIO = MIN_QUAD_AREA_RATIO
-        self.MAX_QUAD_ANGLE_RANGE = MAX_QUAD_ANGLE_RANGE        
+        self.MAX_QUAD_ANGLE_RANGE = MAX_QUAD_ANGLE_RANGE
 
     def filter_corners(self, corners, min_dist=20):
         """Filters corners that are within min_dist of others"""
+
         def predicate(representatives, corner):
             return all(dist.euclidean(representative, corner) >= min_dist
                        for representative in representatives)
@@ -84,7 +114,7 @@ class DocScanner(object):
         lla = self.get_angle(br[0], bl[0], tl[0])
 
         angles = [ura, ula, lra, lla]
-        return np.ptp(angles)          
+        return np.ptp(angles)
 
     def get_corners(self, img):
         """
@@ -163,9 +193,8 @@ class DocScanner(object):
     def is_valid_contour(self, cnt, IM_WIDTH, IM_HEIGHT):
         """Returns True if the contour satisfies all requirements set at instantitation"""
 
-        return (len(cnt) == 4 and cv2.contourArea(cnt) > IM_WIDTH * IM_HEIGHT * self.MIN_QUAD_AREA_RATIO 
-            and self.angle_range(cnt) < self.MAX_QUAD_ANGLE_RANGE)
-
+        return (len(cnt) == 4 and cv2.contourArea(cnt) > IM_WIDTH * IM_HEIGHT * self.MIN_QUAD_AREA_RATIO
+                and self.angle_range(cnt) < self.MAX_QUAD_ANGLE_RANGE)
 
     def get_contour(self, rescaled_image):
         """
@@ -185,10 +214,10 @@ class DocScanner(object):
 
         # convert the image to grayscale and blur it slightly
         gray = cv2.cvtColor(rescaled_image, cv2.COLOR_BGR2GRAY)
-        gray = cv2.GaussianBlur(gray, (7,7), 0)
+        gray = cv2.GaussianBlur(gray, (7, 7), 0)
 
         # dilate helps to remove potential holes between edge segments
-        kernel = cv2.getStructuringElement(cv2.MORPH_RECT,(MORPH,MORPH))
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (MORPH, MORPH))
         dilated = cv2.morphologyEx(gray, cv2.MORPH_CLOSE, kernel)
 
         # find edges and mark them in the output map using the Canny algorithm
@@ -203,7 +232,7 @@ class DocScanner(object):
             for quad in itertools.combinations(test_corners, 4):
                 points = np.array(quad)
                 points = transform.order_points(points)
-                points = np.array([[p] for p in points], dtype = "int32")
+                points = np.array([[p] for p in points], dtype="int32")
                 quads.append(points)
 
             # get top five quadrilaterals by area
@@ -246,37 +275,38 @@ class DocScanner(object):
 
         else:
             screenCnt = max(approx_contours, key=cv2.contourArea)
-            
+
         return screenCnt.reshape(4, 2)
 
     def interactive_get_contour(self, screenCnt, rescaled_image):
         poly = Polygon(screenCnt, animated=True, fill=False, color="yellow", linewidth=5)
         fig, ax = plt.subplots()
+        fig.set_size_inches(10, 7)
         ax.add_patch(poly)
         ax.set_title(('Drag the corners of the box to the corners of the document. \n'
-            'Close the window when finished.'))
+                      'Close the window when finished.'))
+        f = zoom_factory(ax, base_scale=1.25)
         p = poly_i.PolygonInteractor(ax, poly)
-        plt.imshow(rescaled_image)
+        plt.imshow(cv2.cvtColor(rescaled_image, cv2.COLOR_BGR2RGB))
         plt.show()
 
         new_points = p.get_poly_points()[:4]
-        new_points = np.array([[p] for p in new_points], dtype = "int32")
+        new_points = np.array([[p] for p in new_points], dtype="int32")
         return new_points.reshape(4, 2)
 
-    def scan(self, image_path):
+    def scan(self, image_path, save_directory):
 
-        RESCALED_HEIGHT = 500.0
-        OUTPUT_DIR = 'output'
+        RESCALED_HEIGHT = 1000.0
 
         # load the image and compute the ratio of the old height
         # to the new height, clone it, and resize it
         image = cv2.imread(image_path)
 
-        assert(image is not None)
+        assert (image is not None)
 
         ratio = image.shape[0] / RESCALED_HEIGHT
         orig = image.copy()
-        rescaled_image = imutils.resize(image, height = int(RESCALED_HEIGHT))
+        rescaled_image = imutils.resize(image, height=int(RESCALED_HEIGHT))
 
         # get the contour of the document
         screenCnt = self.get_contour(rescaled_image)
@@ -287,19 +317,14 @@ class DocScanner(object):
         # apply the perspective transformation
         warped = transform.four_point_transform(orig, screenCnt * ratio)
 
-        # convert the warped image to grayscale
-        gray = cv2.cvtColor(warped, cv2.COLOR_BGR2GRAY)
-
-        # sharpen image
-        sharpen = cv2.GaussianBlur(gray, (0,0), 3)
-        sharpen = cv2.addWeighted(gray, 1.5, sharpen, -0.5, 0)
-
-        # apply adaptive threshold to get black and white effect
-        thresh = cv2.adaptiveThreshold(sharpen, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 21, 15)
-
         # save the transformed image
         basename = os.path.basename(image_path)
-        cv2.imwrite(OUTPUT_DIR + '/' + basename, thresh)
+        out_img_path = os.path.join(os.path.abspath(save_dir), basename)
+        cv2.imwrite(out_img_path, warped)
+        print(f'Saving processed image as {out_img_path}')
+        points_path = out_img_path.split('.')[0] + '_corners.txt'
+        with open(points_path, 'w') as f:
+            f.write(', '.join([str(i) for i in screenCnt * ratio]))
         print("Proccessed " + basename)
 
 
@@ -308,26 +333,38 @@ if __name__ == "__main__":
     group = ap.add_mutually_exclusive_group(required=True)
     group.add_argument("--images", help="Directory of images to be scanned")
     group.add_argument("--image", help="Path to single image to be scanned")
+    ap.add_argument("--save_dir", help='Path to folder where processed files will be saved', default='output')
+    ap.add_argument("-skip_processed", action='store_true', help='Continue from the last processed image in a folder')
     ap.add_argument("-i", action='store_true',
-        help = "Flag for manually verifying and/or setting document corners")
+                    help="Flag for manually verifying and/or setting document corners")
 
     args = vars(ap.parse_args())
     im_dir = args["images"]
     im_file_path = args["image"]
+    save_dir = args["save_dir"]
     interactive_mode = args["i"]
+    skip_processed = args["skip_processed"]
 
     scanner = DocScanner(interactive_mode)
 
     valid_formats = [".jpg", ".jpeg", ".jp2", ".png", ".bmp", ".tiff", ".tif"]
 
-    get_ext = lambda f: os.path.splitext(f)[1].lower()
+
+    def get_ext(f):
+        return os.path.splitext(f)[1].lower()
+
+    if not os.path.exists(save_dir):
+        os.mkdir(save_dir)
 
     # Scan single image specified by command line argument --image <IMAGE_PATH>
     if im_file_path:
-        scanner.scan(im_file_path)
+        scanner.scan(im_file_path, save_dir)
 
     # Scan all valid images in directory specified by command line argument --images <IMAGE_DIR>
     else:
         im_files = [f for f in os.listdir(im_dir) if get_ext(f) in valid_formats]
+        if skip_processed:
+            already_processed = [f for f in os.listdir(save_dir) if get_ext(f) in valid_formats]
+            in_files = [f for f in im_files if f not in already_processed]
         for im in im_files:
-            scanner.scan(im_dir + '/' + im)
+            scanner.scan(im_dir + '/' + im, save_dir)
