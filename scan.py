@@ -13,6 +13,7 @@ from scipy.spatial import distance as dist
 from matplotlib.patches import Polygon
 import polygon_interacter as poly_i
 import numpy as np
+import matplotlib
 import matplotlib.pyplot as plt
 import itertools
 import math
@@ -21,6 +22,9 @@ from pylsd.lsd import lsd
 
 import argparse
 import os
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def zoom_factory(ax, base_scale=2.0):
@@ -68,6 +72,11 @@ class DocScanner(object):
         self.interactive = interactive
         self.MIN_QUAD_AREA_RATIO = MIN_QUAD_AREA_RATIO
         self.MAX_QUAD_ANGLE_RANGE = MAX_QUAD_ANGLE_RANGE
+        backend = 'TkAgg'
+        try:
+            matplotlib.use(backend)
+        except ImportError:
+            logger.warning(f"Backend {backend} not available, using the default one instead.")
 
     def filter_corners(self, corners, min_dist=20):
         """Filters corners that are within min_dist of others"""
